@@ -99,6 +99,12 @@ config FSL_IMX8MP_CCM
 config STM32_RCC
     bool
 
+config STM32H7RSXX_RCC
+    bool
+
+config STM32H7S7XX_PWR
+    bool
+
 config STM32F2XX_SYSCFG
     bool
 

@@ -236,6 +236,12 @@ config STELLARIS
     select STELLARIS_GPTM # general purpose timer module
     select UNIMP
 
+config STM32H7RX7SX_DK
+    bool
+    default y
+    depends on TCG && ARM
+    select STM32H7RX7SX_SOC
+
 config STM32VLDISCOVERY
     bool
     default y
