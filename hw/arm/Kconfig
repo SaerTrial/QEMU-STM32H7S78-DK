@@ -391,6 +391,13 @@ config RASPI
     select BCM2835_SPI
     select BCM2835_I2C
 
+config STM32H7RX7SX_SOC
+    bool 
+    select ARM_V7M
+    select STM32H7RX7SX_USART
+    select STM32H7S7XX_PWR
+    select STM32H7RSXX_RCC
+
 config STM32F100_SOC
     bool
     select ARM_V7M

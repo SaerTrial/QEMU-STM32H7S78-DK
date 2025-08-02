@@ -1,13 +1,10 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
-#include "qemu/module.h"
-#include "hw/arm/boot.h"
-#include "exec/address-spaces.h"
+#include "system/address-spaces.h"
+#include "system/system.h"
 #include "hw/arm/stm32h7rx7sx_soc.h"
-#include "hw/qdev-properties.h"
 #include "hw/qdev-clock.h"
 #include "hw/misc/unimp.h"
-#include "system/system.h"
 
 static const uint32_t usart_addr[STM_NUM_USARTS] = { 0x40004C00 };
 #define RCC_ADDR                       0x58024400
@@ -136,7 +133,7 @@ static void stm32h7rx7sx_soc_realize(DeviceState *dev_soc, Error **errp)
 
 }
 
-static void stm32h7rx7sx_soc_class_init(ObjectClass *klass, void *data)
+static void stm32h7rx7sx_soc_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

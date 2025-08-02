@@ -72,21 +72,25 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
         }
         retvalue = s->usart_isr;
         s->usart_isr &= ~USART_ISR_TC;
+        // make receive available
+        s->usart_isr |= USART_ISR_RXFNE;
         break;
     case USART_RDR:
-        retvalue = s->usart_rdr & 0x3FF;
+        srand(time(NULL));
+        retvalue = (rand()%256) & 0x3FF;
+        // retvalue = s->usart_rdr & 0x3FF;
         if(IS_FIFO_MODE(s->usart_cr1)){
             s->usart_isr &= ~USART_ISR_RXFNE;
         }
         else{
             s->usart_isr &= ~USART_ISR_RXNE;
         }
-        qemu_chr_fe_accept_input(&s->chr);
+        // qemu_chr_fe_accept_input(&s->chr);
         break;
     case USART_BRR:
         retvalue = s->usart_brr;
         break;
-    case USART_CR1:
+    case USART_CR1:     
         retvalue = s->usart_cr1;
         break;
     case USART_CR2:
@@ -121,7 +125,6 @@ static void stm32h7rx7sx_usart_write(void *opaque, hwaddr addr,
     unsigned char ch;
 
     // trace_stm32h7rx7sx_usart_write(d->id, size, addr, val64);
-
     switch (addr) {
     case USART_CR1:
         s->usart_cr1 = value;
@@ -233,7 +236,7 @@ static void stm32h7rx7sx_usart_realize(DeviceState *dev, Error **errp)
                              s, NULL, true);
 }
 
-static void stm32h7rx7sx_usart_class_init(ObjectClass *klass, void *data)
+static void stm32h7rx7sx_usart_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 

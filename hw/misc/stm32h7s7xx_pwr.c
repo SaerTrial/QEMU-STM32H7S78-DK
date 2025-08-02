@@ -78,7 +78,7 @@ static const VMStateDescription vmstate_stm32h7s7xx_pwr = {
     }
 };
 
-static void stm32h7s7xx_pwr_class_init(ObjectClass *klass, void *data)
+static void stm32h7s7xx_pwr_class_init(ObjectClass *klass, const void *data)
 {
     DeviceClass *dc = DEVICE_CLASS(klass);
 
