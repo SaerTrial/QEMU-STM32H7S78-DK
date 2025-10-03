@@ -412,6 +412,7 @@ DEF_ATOMIC2(tcg_gen_atomic_umax_fetch, i64)
 #define tcg_gen_dup_tl_vec  tcg_gen_dup_i32_vec
 #define tcg_gen_dup_tl tcg_gen_dup_i32
 
+
 #define dup_const_tl(VECE, C)                                      \
     (__builtin_constant_p(VECE)                                    \
      ? (  (VECE) == MO_8  ? 0x01010101ul * (uint8_t)(C)            \

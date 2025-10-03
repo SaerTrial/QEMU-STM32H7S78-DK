@@ -6565,8 +6565,25 @@ static bool trans_CLRM(DisasContext *s, arg_CLRM *a)
  * Branch, branch with link
  */
 
+static uint32_t backward_edge_icount = 0;
+
+static void backward_edge_detector(int32_t imm) {
+    if (imm < 0) {
+        backward_edge_icount++;
+    }
+}
+
 static bool trans_B(DisasContext *s, arg_i *a)
 {
+    TCGv_i32 imm = tcg_constant_i32(a->imm + (s->thumb? 4 : 8) );
+   
+    TCGTemp* args_icount[] = {
+        tcgv_i32_temp(imm),
+    };
+
+    add_inline_hook((void*)backward_edge_detector, (void**)args_icount);
+    // printf("pc: 0x%x imm: %d jump backwards: %d\n", s->pc_save, a->imm + 4, (a->imm + 4) < 0);
+
     gen_jmp(s, jmp_diff(s, a->imm));
     return true;
 }
@@ -7696,6 +7713,8 @@ static void arm_tr_tb_start(DisasContextBase *dcbase, CPUState *cpu)
     if (dc->condexec_mask || dc->condexec_cond) {
         store_cpu_field_constant(0, condexec_bits);
     }
+
+
 }
 
 static void arm_tr_insn_start(DisasContextBase *dcbase, CPUState *cpu)
@@ -7806,6 +7825,7 @@ static void arm_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     insn = arm_ldl_code(env, &dc->base, pc, dc->sctlr_b);
     dc->insn = insn;
     dc->base.pc_next = pc + 4;
+
     disas_arm_insn(dc, insn);
 
     arm_post_translate_insn(dc);
@@ -7946,6 +7966,21 @@ static void thumb_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
             arm_skip_unless(dc, cond);
         }
     }
+
+   
+    /* Patch a function at an instruction level */
+    // TCGLabel* no_patch =  gen_new_label();
+    // TCGv_ptr tcg_cpu_ptr = tcg_constant_ptr(cpu);
+    // TCGv_i32 is_patch  = tcg_temp_new_i32();
+    // TCGv_i32 tmp_lr = tcg_temp_new_i32();
+    // gen_helper_sym_hook(is_patch, tcg_env, tcg_cpu_ptr);
+    // tcg_gen_brcondi_i32(TCG_COND_EQ, is_patch, 0, no_patch);
+    
+    // // bx lr
+    // gen_helper_sym_patch(tcg_env, tcg_cpu_ptr);
+    // tcg_gen_lookup_and_goto_ptr();
+
+    // gen_set_label(no_patch);
 
     if (is_16bit) {
         disas_thumb_insn(dc, insn);
@@ -8109,12 +8144,23 @@ static void arm_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
+static void arm_patch_function(CPUState *cpu){
+    static uint32_t cnt = 0;
+    CPUARMState *env = cpu_env(cpu);
+    printf("[arm_patch_function_%u] pc: 0x%x, lr: 0x%x, icount:%d \n", cnt++, env->regs[15], env->regs[14], backward_edge_icount);
+    if (env->thumb)
+        env->regs[15] = env->regs[14] & ~1;
+    else
+        env->regs[15] = env->regs[14]
+}
+
 static const TranslatorOps arm_translator_ops = {
     .init_disas_context = arm_tr_init_disas_context,
     .tb_start           = arm_tr_tb_start,
     .insn_start         = arm_tr_insn_start,
     .translate_insn     = arm_tr_translate_insn,
     .tb_stop            = arm_tr_tb_stop,
+    .patch_test         = arm_patch_function,
 };
 
 static const TranslatorOps thumb_translator_ops = {
@@ -8123,6 +8169,7 @@ static const TranslatorOps thumb_translator_ops = {
     .insn_start         = arm_tr_insn_start,
     .translate_insn     = thumb_tr_translate_insn,
     .tb_stop            = arm_tr_tb_stop,
+    .patch_test         = arm_patch_function,
 };
 
 void arm_translate_code(CPUState *cpu, TranslationBlock *tb,

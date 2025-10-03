@@ -21,6 +21,7 @@
 #include "disas/disas.h"
 #include "tb-internal.h"
 
+
 static void set_can_do_io(DisasContextBase *db, bool val)
 {
     QEMU_BUILD_BUG_ON(sizeof_field(CPUState, neg.can_do_io) != 1);
@@ -146,6 +147,11 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     ops->init_disas_context(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
+    // generate some TCGops to patch a function at a BB level
+
+    gen_tracecode(ops->patch_test, cpu, db->pc_first);
+
+
     /* Start translating.  */
     icount_start_insn = gen_tb_start(db, cflags);
     ops->tb_start(db, cpu);
@@ -166,7 +172,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
         if (plugin_enabled) {
             plugin_gen_insn_start(cpu, db);
         }
-
+        
         /*
          * Disassemble one instruction.  The translate_insn hook should
          * update db->pc_next and db->is_jmp to indicate what should be

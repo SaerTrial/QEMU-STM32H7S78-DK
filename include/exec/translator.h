@@ -121,6 +121,7 @@ typedef struct TranslatorOps {
     void (*translate_insn)(DisasContextBase *db, CPUState *cpu);
     void (*tb_stop)(DisasContextBase *db, CPUState *cpu);
     bool (*disas_log)(const DisasContextBase *db, CPUState *cpu, FILE *f);
+    void (*patch_test)(CPUState *cpu);
 } TranslatorOps;
 
 /**

@@ -38,7 +38,36 @@
 #define HELPER_H "tcg/helper.h"
 #include "exec/helper-proto.h.inc"
 
+
 static void switch_mode(CPUARMState *env, int mode);
+
+void HELPER(sym_patch)(CPUARMState *env, void* cpu)
+{
+    printf("PC: 0x%x is in patch\n", env->regs[15]);
+    env->thumb = true;
+    env->regs[15] = env->regs[14] & ~1;
+}
+
+uint32_t HELPER(sym_hook)(CPUARMState *env, void* cpu)
+{
+    bool is_patch = false;
+    switch (env->regs[15]) {
+        case 0x080025c8:
+            printf("HAL_Delay(%d)\n", env->regs[0]);
+            is_patch = true;
+            break;
+        case 0x08002020:
+            printf("rand()\n");
+            is_patch = true;
+            break;
+        case 0x080002c8:
+            printf("uart_printf lr: 0x%x\n", env->regs[14]);
+            is_patch = true;
+            break;
+    }
+
+    return is_patch;
+}
 
 uint64_t raw_read(CPUARMState *env, const ARMCPRegInfo *ri)
 {

@@ -1216,3 +1216,9 @@ DEF_HELPER_FLAGS_4(sme2_luti4_2s, TCG_CALL_NO_RWG, void, ptr, ptr, env, i32)
 
 DEF_HELPER_FLAGS_4(sme2_luti4_4h, TCG_CALL_NO_RWG, void, ptr, ptr, env, i32)
 DEF_HELPER_FLAGS_4(sme2_luti4_4s, TCG_CALL_NO_RWG, void, ptr, ptr, env, i32)
+
+/*  Symbolic Execution */
+DEF_HELPER_FLAGS_2(sym_hook, TCG_CALL_NO_RWG, i32, env, ptr)
+DEF_HELPER_FLAGS_2(sym_patch, TCG_CALL_NO_RWG, void, env, ptr)
+
+

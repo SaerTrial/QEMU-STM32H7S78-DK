@@ -78,7 +78,6 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
     case USART_RDR:
         srand(time(NULL));
         retvalue = (rand()%256) & 0xFF;
-        // retvalue = s->usart_rdr & 0xFF;
         if(IS_FIFO_MODE(s->usart_cr1)){
             s->usart_isr &= ~USART_ISR_RXFNE;
         }

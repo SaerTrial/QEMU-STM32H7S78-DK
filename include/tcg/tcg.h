@@ -1003,6 +1003,10 @@ static inline const TCGOpcode *tcg_swap_vecop_list(const TCGOpcode *n)
 #endif
 }
 
+
+void add_inline_hook(void *callback, void** args);
+
+
 bool tcg_can_emit_vecop_list(const TCGOpcode *, TCGType, unsigned);
 void tcg_dump_ops(TCGContext *s, FILE *f, bool have_prefs);
 /* tcg_dump_stats: Append TCG statistics to @buf */
