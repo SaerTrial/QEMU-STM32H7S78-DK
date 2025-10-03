@@ -2,6 +2,11 @@
 QEMU README
 ===========
 
+
+usage: ./qemu-system-arm -M stm32h7rx7sx_dk -display none -kernel ./stm32-cubemx.elf -chardev stdio,id=char0 -serial chardev:char0 -D qemu.log -d guest_errors > patch.log
+
+------------------------------------------------------------------------
+
 QEMU is a generic and open source machine & userspace emulator and
 virtualizer.
 
