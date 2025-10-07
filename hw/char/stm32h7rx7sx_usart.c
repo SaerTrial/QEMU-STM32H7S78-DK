@@ -7,6 +7,7 @@
 #include "qemu/module.h"
 
 #include "trace.h"
+#include "accel/tcg/afl-qemu-cpu.h"
 
 // hack: due to stm32h7rx7sx implementing a FIFO buffer, 
 // we do not wanna complicate emulation and simply reduce this buffer as only storing one element
@@ -76,8 +77,9 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
         s->usart_isr |= USART_ISR_RXFNE;
         break;
     case USART_RDR:
-        srand(time(NULL));
-        retvalue = (rand()%256) & 0xFF;
+        // srand(time(NULL));
+        // retvalue = (rand()%256) & 0xFF;
+        get_fuzz((uint8_t*)&retvalue, sizeof(retvalue));
         if(IS_FIFO_MODE(s->usart_cr1)){
             s->usart_isr &= ~USART_ISR_RXFNE;
         }
@@ -218,7 +220,7 @@ static const Property stm32h7rx7sx_usart_properties[] = {
 static void stm32h7rx7sx_usart_init(Object *obj)
 {
     STM32H7RX7SXUsartState *s = STM32H7RX7SX_USART(obj);
-
+    
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
 
     memory_region_init_io(&s->mmio, obj, &stm32h7rx7sx_usart_ops, s,
@@ -242,6 +244,8 @@ static void stm32h7rx7sx_usart_class_init(ObjectClass *klass, const void *data)
     device_class_set_legacy_reset(dc, stm32h7rx7sx_usart_reset);
     device_class_set_props(dc, stm32h7rx7sx_usart_properties);
     dc->realize = stm32h7rx7sx_usart_realize;
+
+    // AFL_QEMU_CPU_SNIPPET2;
 }
 
 static const TypeInfo stm32h7rx7sx_usart_info = {

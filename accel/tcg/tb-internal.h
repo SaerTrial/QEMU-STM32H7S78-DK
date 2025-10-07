@@ -42,6 +42,7 @@ static inline void tb_unlock_pages(TranslationBlock *tb) { }
 void tb_lock_page1(tb_page_addr_t, tb_page_addr_t);
 void tb_unlock_page1(tb_page_addr_t, tb_page_addr_t);
 void tb_unlock_pages(TranslationBlock *);
+void tb_lock_pages(TranslationBlock *);
 #endif
 
 #ifdef CONFIG_SOFTMMU

@@ -46,6 +46,8 @@
 #include "tb-internal.h"
 #include "internal-common.h"
 
+#include "accel/tcg/afl-qemu-cpu.h"
+
 /* -icount align implementation. */
 
 typedef struct SyncClocks {
@@ -190,8 +192,8 @@ static bool tb_lookup_cmp(const void *p, const void *d)
     }
     return false;
 }
-
-static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
+TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s);
+TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s)
 {
     tb_page_addr_t phys_pc;
     struct tb_desc desc;
@@ -917,6 +919,11 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 {
     int ret;
 
+    /* AFL-related setup*/
+    determine_input_mode(); 
+    afl_setup_bitmap(); 
+    afl_forkserver(); 
+
     /* if an exception is pending, we execute it here */
     while (!cpu_handle_exception(cpu, &ret)) {
         TranslationBlock *last_tb = NULL;
@@ -951,6 +958,7 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
                 mmap_lock();
                 tb = tb_gen_code(cpu, s);
+                // AFL_QEMU_CPU_SNIPPET1;
                 mmap_unlock();
 
                 /*

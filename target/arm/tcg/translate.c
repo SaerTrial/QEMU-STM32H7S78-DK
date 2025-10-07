@@ -8151,7 +8151,7 @@ static void arm_patch_function(CPUState *cpu){
     if (env->thumb)
         env->regs[15] = env->regs[14] & ~1;
     else
-        env->regs[15] = env->regs[14]
+        env->regs[15] = env->regs[14];
 }
 
 static const TranslatorOps arm_translator_ops = {

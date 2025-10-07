@@ -40,6 +40,9 @@
 #include "tcg/startup.h"
 #include "tcg/tcg-op-common.h"
 
+#include "accel/tcg/afl-qemu-cpu.h"
+
+
 #if UINTPTR_MAX == UINT32_MAX
 # define ELF_CLASS  ELFCLASS32
 #else
@@ -2733,14 +2736,34 @@ static uint32_t hook_block(uint32_t address)
     return 0;
 }
 
+
+void gen_afl_maybe_log(uint64_t pc){
+    static TCGHelperInfo info;
+
+    TCGv_i32 tpc = tcg_constant_i32((uint32_t)pc);
+    
+    TCGTemp* args[] = {
+        tcgv_i32_temp(tpc)
+    };
+
+    info.flags = TCG_CALL_NO_RWG;
+    // void (*)(uint32_t);
+    info.typemask = dh_typemask(void, 0) | dh_typemask(i32, 1);
+    tcg_gen_callN(afl_maybe_log, &info, NULL, (TCGTemp**)args);
+    tcg_temp_free_i32(tpc);
+
+}
+
+
 void 
 gen_tracecode(ArchPatch func, CPUState* cpu, uint64_t pc)
 {
     if (func == NULL) return;
-    
+
     static TCGHelperInfo info, patch_info; 
     
     TCGv_i32 ret = tcg_temp_new_i32();
+    // FIXME: pc can be a 64 bit one, according to arch in size
     TCGv_i32 tpc = tcg_constant_i32((uint32_t)pc);
 
     TCGTemp* args[] = {
@@ -2773,8 +2796,6 @@ gen_tracecode(ArchPatch func, CPUState* cpu, uint64_t pc)
 
     // no patch path
     gen_set_label(no_patch);
-
-
 
     // add_inline_hook((void*)hook_block, (void**)args);
 
