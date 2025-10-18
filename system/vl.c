@@ -141,6 +141,7 @@
 #include "system/iothread.h"
 #include "qemu/guest-random.h"
 #include "qemu/keyval.h"
+#include "../patches/afl.h"
 
 #define MAX_VIRTIO_CONSOLES 1
 
@@ -2999,6 +3000,15 @@ void qemu_init(int argc, char **argv)
                 qdict_put_str(machine_opts_dict, "graphics", "off");
                 nographic = true;
                 dpy.type = DISPLAY_TYPE_NONE;
+                break;
+            case QEMU_OPTION_aflFile:
+                aflFile = (char *)optarg;
+                break;
+            case QEMU_OPTION_aflPanicAddr:
+                aflPanicAddr = strtoul(optarg, NULL, 16);
+                break;
+            case QEMU_OPTION_aflDmesgAddr:
+                aflDmesgAddr = strtoul(optarg, NULL, 16);
                 break;
             case QEMU_OPTION_kernel:
                 qdict_put_str(machine_opts_dict, "kernel", optarg);

@@ -45,6 +45,7 @@
 #include "tb-context.h"
 #include "tb-internal.h"
 #include "internal-common.h"
+#include "../../patches/afl-qemu-cpu-inl.h"
 
 /* -icount align implementation. */
 
@@ -474,6 +475,8 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
                          last_tb->tc.ptr, pc, lookup_symbol(pc));
             }
         }
+    }else{
+        AFL_QEMU_CPU_SNIPPET2(env, pc);
     }
 
     /*
@@ -485,6 +488,9 @@ cpu_tb_exec(CPUState *cpu, TranslationBlock *itb, int *tb_exit)
         cpu->exception_index = EXCP_DEBUG;
         cpu_loop_exit(cpu);
     }
+
+    if(afl_wants_cpu_to_stop)
+        cpu->exit_request = 1;
 
     return last_tb;
 }
@@ -574,6 +580,8 @@ void cpu_exec_step_atomic(CPUState *cpu)
         if (tb == NULL) {
             mmap_lock();
             tb = tb_gen_code(cpu, s);
+            // notify parent which tb needs to be cached
+            AFL_QEMU_CPU_SNIPPET1;
             mmap_unlock();
         }
 
@@ -951,6 +959,7 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 
                 mmap_lock();
                 tb = tb_gen_code(cpu, s);
+                AFL_QEMU_CPU_SNIPPET1;
                 mmap_unlock();
 
                 /*
@@ -974,11 +983,15 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
                 last_tb = NULL;
             }
 #endif
+/*
+ * chaining complicates AFL's instrumentation so we disable it
+*/
+#ifdef NOPE_NOT_NEVER
             /* See if we can patch the calling TB. */
             if (last_tb) {
                 tb_add_jump(last_tb, tb_exit, tb);
             }
-
+#endif
             cpu_loop_exec_tb(cpu, tb, s.pc, &last_tb, &tb_exit);
 
             /* Try to align the host and virtual clocks
