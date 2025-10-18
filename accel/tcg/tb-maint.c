@@ -448,7 +448,7 @@ void tb_unlock_page1(tb_page_addr_t paddr0, tb_page_addr_t paddr1)
     }
 }
 
- void tb_lock_pages(TranslationBlock *tb)
+static void tb_lock_pages(TranslationBlock *tb)
 {
     tb_page_addr_t paddr0 = tb_page_addr0(tb);
     tb_page_addr_t paddr1 = tb_page_addr1(tb);
@@ -469,7 +469,7 @@ void tb_unlock_page1(tb_page_addr_t paddr0, tb_page_addr_t paddr1)
     page_lock(page_find_alloc(pindex0, true));
 }
 
- void tb_unlock_pages(TranslationBlock *tb)
+void tb_unlock_pages(TranslationBlock *tb)
 {
     tb_page_addr_t paddr0 = tb_page_addr0(tb);
     tb_page_addr_t paddr1 = tb_page_addr1(tb);

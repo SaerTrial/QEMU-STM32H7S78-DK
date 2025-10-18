@@ -147,10 +147,10 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     ops->init_disas_context(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
-    // emit some TCGops that perform real-time logging like afl_may_log to update edge coverage
-    // TODO: some vars for a pointer of edge coverage, previous location, current location
-    // gen_tracecode(ops->patch_test, cpu, db->pc_first);
-    gen_afl_maybe_log(db->pc_first);
+    // generate some TCGops to patch a function at a BB level
+
+    gen_tracecode(ops->patch_test, cpu, db->pc_first);
+
 
     /* Start translating.  */
     icount_start_insn = gen_tb_start(db, cflags);

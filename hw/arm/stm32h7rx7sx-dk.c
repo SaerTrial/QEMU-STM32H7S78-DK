@@ -7,6 +7,7 @@
 #include "hw/arm/boot.h"
 #include "hw/arm/stm32h7rx7sx_soc.h"
 
+
 /* Main SYSCLK frequency in Hz (24MHz) */
 #define SYSCLK_FRQ 24000000ULL
 

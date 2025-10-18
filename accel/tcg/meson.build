@@ -8,7 +8,6 @@ tcg_ss.add(files(
   'cpu-exec.c',
   'cpu-exec-common.c',
   'tcg-runtime.c',
-  'afl-qemu-cpu.c',
   'tcg-runtime-gvec.c',
   'tb-maint.c',
   'tcg-all.c',
