@@ -134,7 +134,7 @@ void afl_setup(void) {
   int shm_id;
 
   /* AFL++ SHM Fuzz */
-  // uint32_t tmp = FS_OPT_ENABLED | FS_OPT_SHDMEM_FUZZ;
+  uint32_t tmp = FS_OPT_ENABLED | FS_OPT_SHDMEM_FUZZ;
 
   if (inst_r) {
 
@@ -157,7 +157,7 @@ void afl_setup(void) {
     if (afl_area_ptr == (void*)-1) exit(1);
 
     /* tell AFL that we opt for SHM Fuzz */
-    // if (write(FORKSRV_FD + 1, &tmp, 4) != 4) exit(1);
+    if (write(FORKSRV_FD + 1, &tmp, 4) != 4) exit(1);
 
     /* With AFL_INST_RATIO set to a low value, we want to touch the bitmap
        so that the parent doesn't give up on us. */
@@ -222,10 +222,10 @@ void afl_forkserver(CPUArchState *env) {
   /* Tell the parent that we're alive. If the parent doesn't want
      to talk, assume that we're not running in forkserver mode. */
 
-  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
   // no need for now since we need a AFL++-compatible fork server logic
+  // if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
 
-  // afl_determine_input_mode();
+  afl_determine_input_mode();
 
   afl_forksrv_pid = getpid();
 
