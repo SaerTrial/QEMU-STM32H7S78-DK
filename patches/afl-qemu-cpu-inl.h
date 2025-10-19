@@ -48,7 +48,7 @@
    overhead in the next forked-off copy). */
 
 #define AFL_QEMU_CPU_SNIPPET1 do { \
-    afl_request_tsl(pc, cs_base, flags, cflags); \
+    afl_request_tsl(s); \
   } while (0)
 
 /* This snippet kicks in when the instruction pointer is positioned at
@@ -75,7 +75,7 @@ static unsigned char *afl_area_ptr = 0;
 
 /* Exported variables populated by the code patched into elfload.c: */
 
-target_ulong afl_entry_point = 0, /* ELF entry point (_start) */
+uint32_t afl_entry_point = 0, /* ELF entry point (_start) */
           afl_start_code = 0,  /* .text start pointer      */
           afl_end_code = 0;    /* .text end pointer        */
 
@@ -105,10 +105,11 @@ static unsigned int afl_inst_rms = MAP_SIZE;
 
 /* Function declarations. */
 
-static inline void afl_maybe_log(target_ulong);
+static inline void afl_maybe_log(uint32_t);
 
 static void afl_wait_tsl(CPUArchState*, int);
-static void afl_request_tsl(vaddr, uint64_t, uint32_t, uint32_t);
+static void afl_request_tsl(TCGTBCPUState);
+void afl_determine_input_mode(void);
 
 /* Data structure passed around by the translate handlers: */
 
@@ -118,16 +119,6 @@ struct afl_tsl {
   uint32_t flags;
   uint32_t cflags;
 };
-
-/* Some forward decls: */
-
-static TranslationBlock *tb_htable_lookup(CPUState*, vaddr,
-                                          uint64_t, uint32_t,
-                                          uint32_t);
-
-static inline TranslationBlock *tb_lookup(CPUState*, vaddr,
-                                          uint64_t, uint32_t,
-                                          uint32_t);
 
 /*************************
  * ACTUAL IMPLEMENTATION *
@@ -143,7 +134,7 @@ void afl_setup(void) {
   int shm_id;
 
   /* AFL++ SHM Fuzz */
-  uint32_t tmp = FS_OPT_ENABLED | FS_OPT_SHDMEM_FUZZ;
+  // uint32_t tmp = FS_OPT_ENABLED | FS_OPT_SHDMEM_FUZZ;
 
   if (inst_r) {
 
@@ -166,7 +157,7 @@ void afl_setup(void) {
     if (afl_area_ptr == (void*)-1) exit(1);
 
     /* tell AFL that we opt for SHM Fuzz */
-    if (write(FORKSRV_FD + 1, &tmp, 4) != 4) exit(1);
+    // if (write(FORKSRV_FD + 1, &tmp, 4) != 4) exit(1);
 
     /* With AFL_INST_RATIO set to a low value, we want to touch the bitmap
        so that the parent doesn't give up on us. */
@@ -178,7 +169,7 @@ void afl_setup(void) {
   if (getenv("AFL_INST_LIBS")) {
 
     afl_start_code = 0;
-    afl_end_code   = (target_ulong)-1;
+    afl_end_code   = (uint32_t)-1;
 
   }
 
@@ -187,7 +178,6 @@ void afl_setup(void) {
      behaviour, and seems to work alright? */
 
   rcu_disable_atfork();
-
 }
 
 /* Determine if AFL or AFL++ input mode */
@@ -232,10 +222,10 @@ void afl_forkserver(CPUArchState *env) {
   /* Tell the parent that we're alive. If the parent doesn't want
      to talk, assume that we're not running in forkserver mode. */
 
-  // if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
+  if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
   // no need for now since we need a AFL++-compatible fork server logic
 
-  afl_determine_input_mode();
+  // afl_determine_input_mode();
 
   afl_forksrv_pid = getpid();
 
@@ -290,7 +280,7 @@ void afl_forkserver(CPUArchState *env) {
 }
 
 
-static inline target_ulong aflHash(target_ulong cur_loc) {
+static inline uint32_t aflHash(uint32_t cur_loc) {
   if(!aflStart)
     return 0;
 
@@ -310,20 +300,25 @@ static inline target_ulong aflHash(target_ulong cur_loc) {
   /* Looks like QEMU always maps to fixed locations, so ASAN is not a
      concern. Phew. But instruction addresses may be aligned. Let's mangle
      the value to get something quasi-uniform. */
-  target_ulong h = cur_loc;
-#if TARGET_LONG_BITS == 32
+  uint32_t h = cur_loc;
+// #if TARGET_LONG_BITS == 32
+//   h ^= cur_loc >> 16;
+//   h *= 0x85ebca6b;
+//   h ^= h >> 13;
+//   h *= 0xc2b2ae35;
+//   h ^= h >> 16;
+// #else
+//   h ^= cur_loc >> 33;
+//   h *= 0xff51afd7ed558ccd;
+//   h ^= h >> 33;
+//   h *= 0xc4ceb9fe1a85ec53;
+//   h ^= h >> 33;
+// #endif
   h ^= cur_loc >> 16;
   h *= 0x85ebca6b;
   h ^= h >> 13;
   h *= 0xc2b2ae35;
   h ^= h >> 16;
-#else
-  h ^= cur_loc >> 33;
-  h *= 0xff51afd7ed558ccd;
-  h ^= h >> 33;
-  h *= 0xc4ceb9fe1a85ec53;
-  h ^= h >> 33;
-#endif
 
   h &= MAP_SIZE - 1;
 
@@ -335,8 +330,8 @@ static inline target_ulong aflHash(target_ulong cur_loc) {
 }
 
 /* todo: generate calls to helper_aflMaybeLog during translation */
-static inline void helper_aflMaybeLog(target_ulong cur_loc) {
-  static __thread target_ulong prev_loc;
+static inline void helper_aflMaybeLog(uint32_t cur_loc) {
+  static __thread uint32_t prev_loc;
 
   afl_area_ptr[cur_loc ^ prev_loc]++;
   // qemu_log("afl_area_ptr[%x ^ %x] = %d\n", cur_loc, prev_loc, (int)afl_area_ptr[cur_loc ^ prev_loc]);
@@ -345,7 +340,7 @@ static inline void helper_aflMaybeLog(target_ulong cur_loc) {
 
 /* The equivalent of the tuple logging routine from afl-as.h. */
 
-static inline void afl_maybe_log(target_ulong cur_loc) {
+static inline void afl_maybe_log(uint32_t cur_loc) {
   cur_loc = aflHash(cur_loc);
   if(cur_loc) {
     helper_aflMaybeLog(cur_loc);
@@ -358,16 +353,17 @@ static inline void afl_maybe_log(target_ulong cur_loc) {
    we tell the parent to mirror the operation, so that the next fork() has a
    cached copy. */
 
-static void afl_request_tsl(vaddr pc, uint64_t cb, uint32_t flags, uint32_t cflags) {
+//static void afl_request_tsl(vaddr pc, uint64_t cb, uint32_t flags, uint32_t cflags) {
+static void afl_request_tsl(TCGTBCPUState s) {
 
   struct afl_tsl t;
 
   if (!afl_fork_child) return;
 
-  t.pc      = pc;
-  t.cs_base = cb;
-  t.flags   = flags;
-  t.cflags  = cflags;
+  t.pc      = s.pc;
+  t.cs_base = s.cs_base;
+  t.flags   = s.flags;
+  t.cflags  = s.cflags;
 
   if (write(TSL_FD, &t, sizeof(struct afl_tsl)) != sizeof(struct afl_tsl))
     return;
@@ -381,6 +377,9 @@ static void afl_request_tsl(vaddr pc, uint64_t cb, uint32_t flags, uint32_t cfla
 //                                           uint32_t cflags);
 
 // static void tb_lock_pages(TranslationBlock *tb);
+
+static TranslationBlock *tb_htable_lookup(CPUState *cpu, TCGTBCPUState s);
+
 
 static void afl_wait_tsl(CPUArchState *env, int fd) {
 
@@ -401,11 +400,13 @@ static void afl_wait_tsl(CPUArchState *env, int fd) {
     if (read(fd, &t, sizeof(struct afl_tsl)) != sizeof(struct afl_tsl))
       break;
 
-    tb = tb_htable_lookup(cpu, t.pc, t.cs_base, t.flags, t.cflags);
+    TCGTBCPUState s = {.pc=t.pc, .cflags=t.cflags, .cs_base=t.cs_base, .flags=t.flags};
+    //tb = tb_htable_lookup(cpu, t.pc, t.cs_base, t.flags, t.cflags);
+    tb = tb_htable_lookup(cpu, s);
 
     if(!tb && (t.pc >= 0xffffffff81000000 && t.pc <= 0xffffffff81ffffff )) {
           mmap_lock();
-          tb_gen_code(cpu, t.pc, t.cs_base, t.flags, t.cflags);
+          tb_gen_code(cpu, s);
           mmap_unlock();
           printf("wait_tsl %lx -- jit\n", t.pc); fflush(stdout);
     }else{

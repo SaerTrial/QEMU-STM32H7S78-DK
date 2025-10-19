@@ -54,7 +54,7 @@ static void stm32h7rx7sx_usart_receive(void *opaque, const uint8_t *buf, int siz
     // trace_stm32f2xx_usart_receive(d->id, *buf);
 }
 
-
+bool getFuzz(uint8_t *buf, uint32_t size);
 static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
                                        unsigned int size)
 {
@@ -76,14 +76,26 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
         s->usart_isr |= USART_ISR_RXFNE;
         break;
     case USART_RDR:
-        srand(time(NULL));
-        retvalue = (rand()%256) & 0xFF;
+        // srand(time(NULL));
+        // retvalue = (rand()%256) & 0xFF;
         if(IS_FIFO_MODE(s->usart_cr1)){
             s->usart_isr &= ~USART_ISR_RXFNE;
         }
         else{
             s->usart_isr &= ~USART_ISR_RXNE;
         }
+
+        if (IS_9BIT_MODE(s->usart_cr1)) {
+            getFuzz((uint8_t*)&retvalue, 2);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: uart char (9bit): 0x%x\n", __func__, (uint32_t)retvalue);
+        }
+        else{
+            getFuzz((uint8_t*)&retvalue, 1);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: uart char (8bit): 0x%x\n", __func__, (uint32_t)retvalue);
+        }
+
         // qemu_chr_fe_accept_input(&s->chr);
         break;
     case USART_BRR:

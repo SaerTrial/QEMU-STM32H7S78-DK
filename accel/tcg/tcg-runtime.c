@@ -31,6 +31,9 @@
 #include "exec/helper-info.c.inc"
 #undef  HELPER_H
 
+#include "qemu/log.h"
+// #include "accel/tcg/cpu-ldst.h"
+
 /* 32-bit helpers */
 
 int32_t HELPER(div_i32)(int32_t arg1, int32_t arg2)
@@ -148,3 +151,5 @@ void HELPER(exit_atomic)(CPUArchState *env)
 {
     cpu_loop_exit_atomic(env_cpu(env), GETPC());
 }
+
+#include "../../patches/aflCall_helper.h"

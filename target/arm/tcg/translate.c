@@ -6565,25 +6565,8 @@ static bool trans_CLRM(DisasContext *s, arg_CLRM *a)
  * Branch, branch with link
  */
 
-static uint32_t backward_edge_icount = 0;
-
-static void backward_edge_detector(int32_t imm) {
-    if (imm < 0) {
-        backward_edge_icount++;
-    }
-}
-
 static bool trans_B(DisasContext *s, arg_i *a)
 {
-    TCGv_i32 imm = tcg_constant_i32(a->imm + (s->thumb? 4 : 8) );
-   
-    TCGTemp* args_icount[] = {
-        tcgv_i32_temp(imm),
-    };
-
-    add_inline_hook((void*)backward_edge_detector, (void**)args_icount);
-    // printf("pc: 0x%x imm: %d jump backwards: %d\n", s->pc_save, a->imm + 4, (a->imm + 4) < 0);
-
     gen_jmp(s, jmp_diff(s, a->imm));
     return true;
 }
@@ -7025,9 +7008,24 @@ static bool trans_SVC(DisasContext *s, arg_SVC *a)
             uint32_t syndrome = syn_aa32_svc(a->imm, s->thumb);
             gen_exception_insn_el(s, 0, EXCP_UDEF, syndrome, 2);
         } else {
-            gen_update_pc(s, curr_insn_len(s));
-            s->svc_imm = a->imm;
-            s->base.is_jmp = DISAS_SWI;
+            // gen_update_pc(s, curr_insn_len(s));
+            // s->svc_imm = a->imm;
+            // s->base.is_jmp = DISAS_SWI;
+            target_ulong svc_imm = extract32(s->insn, 0, 24);
+            if(svc_imm == 0x4c4641) {
+                // TCGv_i32 tmp = load_reg(s, 0);
+                // TCGv_i32 tmp2 = load_reg(s, 1);
+                // TCGv_i32 tmp3 = load_reg(s, 2);
+                // gen_helper_aflCall32(tmp, tcg_env, tmp, tmp2, tmp3);
+                // tcg_temp_free_i32(tmp3);
+                // tcg_temp_free_i32(tmp2);
+                // store_reg(s, 0, tmp);
+            } else {
+                gen_update_pc(s, curr_insn_len(s));
+                s->svc_imm = a->imm;
+                s->base.is_jmp = DISAS_SWI;
+            }
+
         }
     }
     return true;
@@ -8144,14 +8142,38 @@ static void arm_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
-static void arm_patch_function(CPUState *cpu){
+#include "qemu/main-loop.h"
+
+void armv7m_nvic_set_pending(NVICState *s, int irq, bool secure);
+static uint32_t arm_helper_func(CPUState *cpu){
     static uint32_t cnt = 0;
     CPUARMState *env = cpu_env(cpu);
-    printf("[arm_patch_function_%u] pc: 0x%x, lr: 0x%x, icount:%d \n", cnt++, env->regs[15], env->regs[14], backward_edge_icount);
-    if (env->thumb)
-        env->regs[15] = env->regs[14] & ~1;
-    else
-        env->regs[15] = env->regs[14]
+    
+    qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: bb: 0x%x ...\n", __func__, env->regs[15]);
+
+    cnt++;
+
+    if (env->regs[15] == 0x08002668){
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: patch bb at 0x%x \n", __func__, env->regs[15]);
+        if (env->thumb)
+            env->regs[15] = env->regs[14] & ~1;
+        else
+            env->regs[15] = env->regs[14];
+        return 1;
+    }
+
+    if (cnt % 50 == 0) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: fire a systick interrupt \n", __func__);
+        bql_lock();
+        armv7m_nvic_set_pending(env->nvic, ARMV7M_EXCP_SYSTICK, false);
+        bql_unlock();
+        cnt = 0;
+    }
+
+    return 0;
 }
 
 static const TranslatorOps arm_translator_ops = {
@@ -8160,7 +8182,7 @@ static const TranslatorOps arm_translator_ops = {
     .insn_start         = arm_tr_insn_start,
     .translate_insn     = arm_tr_translate_insn,
     .tb_stop            = arm_tr_tb_stop,
-    .patch_test         = arm_patch_function,
+    .arch_helper        = arm_helper_func,
 };
 
 static const TranslatorOps thumb_translator_ops = {
@@ -8169,7 +8191,7 @@ static const TranslatorOps thumb_translator_ops = {
     .insn_start         = arm_tr_insn_start,
     .translate_insn     = thumb_tr_translate_insn,
     .tb_stop            = arm_tr_tb_stop,
-    .patch_test         = arm_patch_function,
+    .arch_helper        = arm_helper_func,
 };
 
 void arm_translate_code(CPUState *cpu, TranslationBlock *tb,

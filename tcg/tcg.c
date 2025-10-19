@@ -1314,6 +1314,20 @@ void tcg_register_thread(void)
 }
 #endif /* !CONFIG_USER_ONLY */
 
+
+void tcg_unregister_thread(void)
+{
+    TCGContext *s = tcg_ctx;
+    unsigned int n;
+
+    /* Unclaim an entry in tcg_ctxs */
+    n = qatomic_fetch_dec(&tcg_cur_ctxs);
+    g_assert(n > 0);
+    qatomic_store_release(&tcg_ctxs[n - 1], 0);
+
+    g_free(s);
+}
+
 /* pool based memory allocation */
 void *tcg_malloc_internal(TCGContext *s, int size)
 {
@@ -2707,90 +2721,6 @@ static void tcg_gen_callN(void *func, TCGHelperInfo *info,
         tcg_temp_free_i64(extend_free[i]);
     }
 }
-
-void add_inline_hook(void *callback, void** args)
-{
-    static TCGHelperInfo info; //= g_malloc(sizeof(TCGHelperInfo));
-    static uint32_t id = 0;
-    char *name = g_malloc(32);
-    sprintf(name, "bb-%d", id++);
-    info.name = name;
-    info.flags = TCG_CALL_NO_RWG;
-    // void (*)(uint32_t)
-    info.typemask = dh_typemask(void, 0) | dh_typemask(i32, 1);
-
-    tcg_gen_callN(callback, &info, NULL, (TCGTemp**)args);   
-}
-
-// hook a TB
-static uint32_t hook_block(uint32_t address)
-{
-    static uint32_t cnt = 0;
-    printf("[%u]addr: 0x%x\n", cnt++, address);
-
-    if (address == 0x80002c8) return 1;
-
-    return 0;
-}
-
-void 
-gen_tracecode(ArchPatch func, CPUState* cpu, uint64_t pc)
-{
-    if (func == NULL) return;
-    
-    static TCGHelperInfo info, patch_info; 
-    
-    TCGv_i32 ret = tcg_temp_new_i32();
-    TCGv_i32 tpc = tcg_constant_i32((uint32_t)pc);
-
-    TCGTemp* args[] = {
-        tcgv_i32_temp(tpc)
-    };
-
-    info.flags = TCG_CALL_NO_RWG;
-    // uint32_t (*)(uint32_t)
-    info.typemask = dh_typemask(i32, 0) | dh_typemask(i32, 1);
-
-    TCGLabel* no_patch =  gen_new_label();
-
-    tcg_gen_callN(hook_block, &info, tcgv_i32_temp(ret), (TCGTemp**)args);
-    tcg_gen_brcondi_i32(TCG_COND_EQ, ret, 0, no_patch);
-    tcg_temp_free_i32(tpc);
-    tcg_temp_free_i32(ret);
-
-    // patch path: bx lr
-    TCGv_ptr pCPU = tcg_constant_ptr(cpu);
-    TCGTemp* args_patch[] = {
-        tcgv_ptr_temp(pCPU)
-    };
-
-    patch_info.flags = TCG_CALL_NO_RWG;
-    // void (*)(void*)
-    patch_info.typemask = dh_typemask(void, 0) | dh_typemask(ptr, 1);
-    tcg_gen_callN((void*)func, &patch_info, NULL, (TCGTemp**)args_patch);
-    tcg_temp_free_ptr(pCPU);
-    tcg_gen_lookup_and_goto_ptr();
-
-    // no patch path
-    gen_set_label(no_patch);
-
-
-
-    // add_inline_hook((void*)hook_block, (void**)args);
-
-    // tcg_temp_free_i32(tpc);
-
-    // TCGv_ptr pCPU = tcg_constant_ptr(cpu);
-    
-    // TCGTemp* args_patch_test[] = {
-    //     tcgv_ptr_temp(pCPU)
-    // };
-
-    // add_inline_hook((void*)func, (void**)args_patch_test);
-
-    // tcg_temp_free_ptr(pCPU);
-}
-
 
 void tcg_gen_call0(void *func, TCGHelperInfo *info, TCGTemp *ret)
 {
@@ -7420,3 +7350,56 @@ void tcg_expand_vec_op(TCGOpcode o, TCGType t, unsigned e, TCGArg a0, ...)
     g_assert_not_reached();
 }
 #endif
+
+
+
+extern uint32_t aflPanicAddr;
+extern uint32_t aflDmesgAddr;
+
+static bool check = false;
+
+void gen_aflBBlock(ArchHelper func, CPUState* cpu, uint64_t pc){
+
+    if (!check) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: aflPanicAddr: 0x%x aflDmesgAddr: 0x%x\n", __func__, aflPanicAddr, aflDmesgAddr);
+        check = true;
+    }
+
+    if((uint32_t)pc == (uint32_t)aflPanicAddr){
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "%s: aflPanicAddr: 0x%x \n", __func__, aflPanicAddr);
+        gen_helper_aflInterceptPanic();
+    }
+    
+    if((uint32_t)pc == (uint32_t)aflDmesgAddr){
+        TCGv_ptr tenv = tcg_constant_ptr(cpu_env(cpu));
+        gen_helper_aflInterceptLog(tenv);
+        tcg_temp_free_ptr(tenv);
+    }
+
+    static TCGHelperInfo info; 
+
+    TCGv_ptr tcg_cpu = tcg_constant_ptr(cpu);
+    TCGv_i32 ret = tcg_temp_new_i32();
+    TCGLabel* no_patch =  gen_new_label();
+
+
+    TCGTemp* args[] = {
+        tcgv_ptr_temp(tcg_cpu)
+    };
+
+    info.flags = TCG_CALL_NO_RWG;
+    info.func = func;
+    // uint32_t (*)(ptr)
+    info.typemask = dh_typemask(i32, 0) | dh_typemask(ptr, 1);
+    tcg_gen_callN(func, &info, tcgv_i32_temp(ret), (TCGTemp**)args);
+    tcg_gen_brcondi_i32(TCG_COND_EQ, ret, 0, no_patch);
+    tcg_temp_free_ptr(tcg_cpu);
+    tcg_temp_free_i32(ret);
+    tcg_gen_lookup_and_goto_ptr();
+
+    // no patch path
+    gen_set_label(no_patch);
+
+}

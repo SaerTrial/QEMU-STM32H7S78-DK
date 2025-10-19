@@ -34,6 +34,8 @@
 #include "tcg/startup.h"
 #include "tcg-accel-ops.h"
 #include "tcg-accel-ops-mttcg.h"
+#include "../../patches/afl.h"
+#include "qemu/log.h"
 
 typedef struct MttcgForceRcuNotifier {
     Notifier notifier;
@@ -60,6 +62,7 @@ static void mttcg_force_rcu(Notifier *notify, void *data)
  * variable current_cpu can be used deep in the code to find the
  * current CPUState for a given thread.
  */
+#include "system/cpu-timers.h"
 
 static void *mttcg_cpu_thread_fn(void *arg)
 {
@@ -114,9 +117,27 @@ static void *mttcg_cpu_thread_fn(void *arg)
         }
 
         qemu_wait_io_event(cpu);
-    } while (!cpu->unplug || cpu_can_run(cpu));
+    } while ((!cpu->unplug || cpu_can_run(cpu)) && !afl_wants_cpu_to_stop);
+
+
+    if(afl_wants_cpu_to_stop) {
+        /* tell iothread to run AFL forkserver */
+        afl_wants_cpu_to_stop = 0;
+        if(write(afl_qemuloop_pipe[1], "FORK", 4) != 4)
+            perror("write afl_qemuloop_pip");
+        afl_qemuloop_pipe[1] = -1;
+
+        restart_cpu = first_cpu;
+        current_cpu = NULL;
+        cpu_disable_ticks();
+
+        /* let iothread through once ... */
+        qemu_wait_io_event(cpu);
+        sleep(1);
+    }
 
     tcg_cpu_destroy(cpu);
+    tcg_unregister_thread();
     bql_unlock();
     rcu_remove_force_rcu_notifier(&force_rcu.notifier);
     rcu_unregister_thread();

@@ -1,16 +1,16 @@
-#include "afl.h"
+#include "../patches/afl.h"
 
-extern target_ulong afl_start_code, afl_end_code;
+extern uint32_t afl_start_code, afl_end_code;
 static bool input_already_given = false;
 extern bool input_mode_SHM;
 uint8_t *fuzz = NULL;
-target_ulong fuzz_size = 0;
-target_ulong fuzz_cursor = 0;
-target_ulong startForkserver(CPUArchState *env, target_ulong enableTicks);
-target_ulong getWork(CPUArchState *env, target_ulong ptr, target_ulong sz);
-target_ulong startWork(CPUArchState *env, target_ulong ptr);
-target_ulong doneWork(target_ulong val);
-const char *peekStrZ(CPUArchState *env, target_ulong ptr, int maxlen);
+uint32_t fuzz_size = 0;
+uint32_t fuzz_cursor = 0;
+uint32_t startForkserver(CPUArchState *env, uint32_t enableTicks);
+uint32_t getWork(CPUArchState *env, uint32_t ptr, uint32_t sz);
+uint32_t startWork(CPUArchState *env, uint32_t ptr);
+uint32_t doneWork(uint32_t val);
+const char *peekStrZ(CPUArchState *env, uint32_t ptr, int maxlen);
 bool getFuzz(uint8_t *buf, uint32_t size);
 static void loadFuzz(void);
 
@@ -36,7 +36,7 @@ void loadFuzz(void) {
     }
 
     fseek(fp, 0L, SEEK_END);
-    target_ulong _size = ftell(fp);
+    uint32_t _size = ftell(fp);
     fuzz_size = _size;
     fseek(fp, 0L, SEEK_SET); 
 
@@ -79,9 +79,9 @@ bool getFuzz(uint8_t *buf, uint32_t size) {
     return false;
 }
 
-target_ulong startForkserver(CPUArchState *env, target_ulong enableTicks)
+uint32_t startForkserver(CPUArchState *env, uint32_t enableTicks)
 {
-    qemu_log_mask(LOG_GUEST_ERROR, "[startForkserver] PanicAddr: 0x%x DmsgAddr:0x%x \n", aflPanicAddr, aflDmesgAddr); 
+    qemu_log_mask(LOG_GUEST_ERROR, "[startForkserver] PanicAddr: 0x%lx DmsgAddr:0x%lx \n", aflPanicAddr, aflDmesgAddr); 
 
     //printf("pid %d: startForkServer\n", getpid()); fflush(stdout);
     if(afl_fork_child) {
@@ -111,51 +111,52 @@ target_ulong startForkserver(CPUArchState *env, target_ulong enableTicks)
 }
 
 /* copy work into ptr[0..sz].  Assumes memory range is locked. */
-target_ulong getWork(CPUArchState *env, target_ulong ptr, target_ulong sz)
+uint32_t getWork(CPUArchState *env, uint32_t ptr, uint32_t sz)
 {
-    target_ulong retsz;
-    FILE *fp;
-    unsigned char ch;
-    qemu_log_mask(LOG_GUEST_ERROR, "get_work:\n");
-    //printf("pid %d: getWork %lx %lx\n", getpid(), ptr, sz);fflush(stdout);
-    assert(aflStart == 0);
-    fp = fopen(aflFile, "rb");
-    if(!fp) {
-         perror(aflFile);
-         return -1;
-    }
-    retsz = 0;
-    while(retsz < sz) {
-        if(fread(&ch, 1, 1, fp) == 0)
-            break;
-        qemu_log_mask(LOG_GUEST_ERROR, "%c", ch);
-        cpu_stb_data(env, ptr, ch);
-        retsz ++;
-        ptr ++;
-    }
-    qemu_log_mask(LOG_GUEST_ERROR, "\n");
-    fclose(fp);
-    return retsz;
+    return 0;
+    // uint32_t retsz;
+    // FILE *fp;
+    // unsigned char ch;
+    // qemu_log_mask(LOG_GUEST_ERROR, "get_work:\n");
+    // //printf("pid %d: getWork %lx %lx\n", getpid(), ptr, sz);fflush(stdout);
+    // assert(aflStart == 0);
+    // fp = fopen(aflFile, "rb");
+    // if(!fp) {
+    //      perror(aflFile);
+    //      return -1;
+    // }
+    // retsz = 0;
+    // while(retsz < sz) {
+    //     if(fread(&ch, 1, 1, fp) == 0)
+    //         break;
+    //     qemu_log_mask(LOG_GUEST_ERROR, "%c", ch);
+    //     cpu_stb_data(env, ptr, ch);
+    //     retsz ++;
+    //     ptr ++;
+    // }
+    // qemu_log_mask(LOG_GUEST_ERROR, "\n");
+    // fclose(fp);
+    // return retsz;
 }
 
-target_ulong startWork(CPUArchState *env, target_ulong ptr)
+uint32_t startWork(CPUArchState *env, uint32_t ptr)
 {
-    target_ulong start, end;
-    input_already_given = false;
+    //uint32_t start, end;
+    //input_already_given = false;
     // qemu_log("pid %d: ptr %lx\n", getpid(), ptr);
-    start = cpu_ldq_data(env, ptr);
-    end = cpu_ldq_data(env, ptr + sizeof start);
+    // start = cpu_ldq_data(env, ptr);
+    // end = cpu_ldq_data(env, ptr + sizeof start);
     // qemu_log("pid %d: startWork %x - %x\n", getpid(), start, end);
 
-    afl_start_code = start;
-    afl_end_code   = end;
-    aflGotLog = 0;
-    aflStart = 1;
+    // afl_start_code = start;
+    // afl_end_code   = end;
+    // aflGotLog = 0;
+    // aflStart = 1;
     // qemu_log("aflStart = %d\n", aflStart);
     return 0;
 }
 
-target_ulong doneWork(target_ulong val)
+uint32_t doneWork(uint32_t val)
 {
     //printf("pid %d: doneWork %lx\n", getpid(), val);fflush(stdout);
     assert(aflStart == 1);
@@ -188,20 +189,21 @@ uint64_t helper_aflCall(CPUArchState *env, uint64_t code, uint64_t a0, uint64_t 
 
 /* return pointer to buf filled with strz from ptr[0..maxlen] */
 const char *
-peekStrZ(CPUArchState *env, target_ulong ptr, int maxlen)
+peekStrZ(CPUArchState *env, uint32_t ptr, int maxlen)
 {
-    static char buf[0x1000];
-    int i;
-    if(maxlen > sizeof buf - 1)
-        maxlen = sizeof buf - 1;
-    for(i = 0; i < maxlen; i++) {
-        char ch = cpu_ldub_data(env, ptr + i);
-        if(!ch)
-            break;
-        buf[i] = ch;
-    }
-    buf[i] = 0;
-    return buf;
+    // static char buf[0x1000];
+    // int i;
+    // if(maxlen > sizeof buf - 1)
+    //     maxlen = sizeof buf - 1;
+    // for(i = 0; i < maxlen; i++) {
+    //     char ch = cpu_ldub_data(env, ptr + i);
+    //     if(!ch)
+    //         break;
+    //     buf[i] = ch;
+    // }
+    // buf[i] = 0;
+    // return buf;
+    return NULL;
 }
 
 void helper_aflInterceptLog(CPUArchState *env)
@@ -209,27 +211,6 @@ void helper_aflInterceptLog(CPUArchState *env)
     if(!aflStart)
         return;
     aflGotLog = 1;
-    
-#ifdef TARGET_X86_64
-    FILE *fp = NULL;
-    if(fp == NULL) {
-        fp = fopen("logstore.txt", "a");
-        if(fp) {
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-            fprintf(fp, "\n----\npid %d time %ld.%06ld\n", getpid(), (u_long)tv.tv_sec, (u_long)tv.tv_usec);
-        }
-    }
-    if(!fp) 
-        return;
-    
-    target_ulong stack = env->regs[R_ESP];;
-    //target_ulong level = env->regs[R_ESI]; // arg 2
-    target_ulong ptext = cpu_ldq_data(env, stack + 0x8); // arg7
-    target_ulong len   = cpu_ldq_data(env, stack + 0x10) & 0xffff; // arg8
-    const char *msg = peekStrZ(env, ptext, len);
-    fprintf(fp, "%s\n", msg);
-#endif
 }
 
 void helper_aflInterceptPanic(void)
