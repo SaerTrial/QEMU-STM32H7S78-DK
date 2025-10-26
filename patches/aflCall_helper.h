@@ -13,6 +13,7 @@ uint32_t doneWork(uint32_t val);
 const char *peekStrZ(CPUArchState *env, uint32_t ptr, int maxlen);
 bool getFuzz(uint8_t *buf, uint32_t size);
 static void loadFuzz(void);
+QDict * load_configuration(const char * filename);
 
 
 void loadFuzz(void) {
@@ -27,7 +28,6 @@ void loadFuzz(void) {
                        "%s: fuzz_size:0x%x fuzz_cursor:0x%x \n", __func__, (uint32_t)fuzz_size, fuzz_cursor);
         return ;
     }
-
 
     fp = fopen(aflFile, "rb");
     if(!fp) {
@@ -58,7 +58,6 @@ void loadFuzz(void) {
 
 /* get fuzzing inputs */
 bool getFuzz(uint8_t *buf, uint32_t size) {
-
     if(!input_already_given){
         loadFuzz();
         input_already_given = true;
@@ -222,3 +221,44 @@ void helper_aflInterceptPanic(void)
     exit(32);
 }
 
+QDict * load_configuration(const char * filename)
+{
+    int file = open(filename, O_RDONLY);
+    off_t filesize = lseek(file, 0, SEEK_END);
+    char * filedata = NULL;
+    ssize_t err;
+    QObject * obj;
+
+    lseek(file, 0, SEEK_SET);
+
+    filedata = g_malloc(filesize + 1);
+    memset(filedata, 0, filesize + 1);
+
+    if (!filedata)
+    {
+        fprintf(stderr, "%ld\n", filesize);
+        fprintf(stderr, "Out of memory\n");
+        exit(1);
+    }
+
+    err = read(file, filedata, filesize);
+
+    if (err != filesize)
+    {
+        fprintf(stderr, "Reading configuration file failed\n");
+        exit(1);
+    }
+
+    close(file);
+
+    obj = qobject_from_json(filedata, NULL);
+    if (!obj || qobject_type(obj) != QTYPE_QDICT)
+    {
+        fprintf(stderr, "Error parsing JSON configuration file\n");
+        exit(1);
+    }
+
+    g_free(filedata);
+
+    return qobject_to(QDict, obj);
+}

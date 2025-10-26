@@ -5,7 +5,7 @@
 #include "hw/qdev-properties-system.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
-
+#include "../../patches/afl.h"
 #include "trace.h"
 
 // hack: due to stm32h7rx7sx implementing a FIFO buffer, 
@@ -55,6 +55,8 @@ static void stm32h7rx7sx_usart_receive(void *opaque, const uint8_t *buf, int siz
 }
 
 bool getFuzz(uint8_t *buf, uint32_t size);
+QDict * load_configuration(const char * filename);
+
 static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
                                        unsigned int size)
 {
@@ -76,8 +78,6 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
         s->usart_isr |= USART_ISR_RXFNE;
         break;
     case USART_RDR:
-        // srand(time(NULL));
-        // retvalue = (rand()%256) & 0xFF;
         if(IS_FIFO_MODE(s->usart_cr1)){
             s->usart_isr &= ~USART_ISR_RXFNE;
         }
@@ -85,15 +85,20 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
             s->usart_isr &= ~USART_ISR_RXNE;
         }
 
-        if (IS_9BIT_MODE(s->usart_cr1)) {
-            getFuzz((uint8_t*)&retvalue, 2);
-            qemu_log_mask(LOG_GUEST_ERROR,
-                       "%s: uart char (9bit): 0x%x\n", __func__, (uint32_t)retvalue);
-        }
-        else{
-            getFuzz((uint8_t*)&retvalue, 1);
-            qemu_log_mask(LOG_GUEST_ERROR,
-                       "%s: uart char (8bit): 0x%x\n", __func__, (uint32_t)retvalue);
+        if(aflStart) {
+            if (IS_9BIT_MODE(s->usart_cr1)) {
+                getFuzz((uint8_t*)&retvalue, 2);
+                qemu_log_mask(LOG_GUEST_ERROR,
+                        "%s: uart char (9bit): 0x%x\n", __func__, (uint32_t)retvalue);
+            }
+            else{
+                getFuzz((uint8_t*)&retvalue, 1);
+                qemu_log_mask(LOG_GUEST_ERROR,
+                        "%s: uart char (8bit): 0x%x\n", __func__, (uint32_t)retvalue);
+            }
+        }else{
+            srand(time(NULL));
+            retvalue = (rand()%256) & 0xFF;
         }
 
         // qemu_chr_fe_accept_input(&s->chr);
@@ -230,12 +235,49 @@ static const Property stm32h7rx7sx_usart_properties[] = {
 static void stm32h7rx7sx_usart_init(Object *obj)
 {
     STM32H7RX7SXUsartState *s = STM32H7RX7SX_USART(obj);
-
+    QDict * conf = NULL;
     sysbus_init_irq(SYS_BUS_DEVICE(obj), &s->irq);
 
     memory_region_init_io(&s->mmio, obj, &stm32h7rx7sx_usart_ops, s,
                           TYPE_STM32H7RX7SX_USART, 0x400);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
+
+    if (aflConf){
+        conf = load_configuration(aflConf);
+        if (qdict_haskey(conf, "name")) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "%s: aflConf:%s \n", __func__, qdict_get_str(conf, "name"));
+        }
+
+        QList * array = qobject_to(QList, qdict_get(conf, "array"));
+        QListEntry *entry;
+        QLIST_FOREACH_ENTRY(array, entry) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "%s: %s \n", __func__, qstring_get_str(qobject_to(QString, qlist_entry_obj(entry))));
+        }
+
+        if (qdict_haskey(conf, "aflEnabled")) {
+            aflEnabled = qdict_get_int(conf, "aflEnabled");
+            qemu_log_mask(LOG_GUEST_ERROR,
+                    "%s: aflEnable:%d \n", __func__, aflEnabled);
+        }
+
+        if (qdict_haskey(conf, "aflPanicAddr")) {
+            aflPanicAddr = strtol(qdict_get_str(conf, "aflPanicAddr"), NULL, 0);
+            assert( aflPanicAddr != 0);
+            
+        }
+
+        if (qdict_haskey(conf, "aflDmesgAddr")) {
+            aflDmesgAddr = strtol(qdict_get_str(conf, "aflDmesgAddr"), NULL, 0);
+            assert( aflDmesgAddr != 0);   
+        }
+
+        qemu_log_mask(LOG_GUEST_ERROR,
+                "%s: aflPanicAddr:0x%lx aflDmesgAddr:0x%lx \n", __func__, aflPanicAddr, aflDmesgAddr);
+
+    }
+   
 }
 
 static void stm32h7rx7sx_usart_realize(DeviceState *dev, Error **errp)

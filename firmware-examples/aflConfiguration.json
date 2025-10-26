@@ -1,0 +1,7 @@
+{
+	"name": "helloworld",
+	"array":["Ford", "BMW", "Fiat"],
+	"aflEnabled": 1,
+	"aflPanicAddr": "0x80021ea",
+	"aflDmesgAddr": "0x80021ea"
+}

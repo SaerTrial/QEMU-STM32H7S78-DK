@@ -56,7 +56,7 @@
    regular instrumentation injected via afl-as.h. */
 
 #define AFL_QEMU_CPU_SNIPPET2(env, pc) do { \
-    if((pc == afl_entry_point || (pc|1) == afl_entry_point) && pc && getenv("AFLGETWORK") == 0) { \
+    if((pc == afl_entry_point || (pc|1) == afl_entry_point) && pc && getenv("AFLGETWORK") == 0 && aflEnabled) { \
       afl_setup(); \
       afl_forkserver(env); \
       aflStart = 1; \
@@ -79,6 +79,8 @@ uint32_t afl_entry_point = 0, /* ELF entry point (_start) */
           afl_start_code = 0,  /* .text start pointer      */
           afl_end_code = 0;    /* .text end pointer        */
 
+uint32_t aflEnabled = 0; /* AFL enable */
+
 int aflStart = 0;               /* we've started fuzzing */
 int aflEnableTicks = 0;         /* re-enable ticks for each test */
 int aflGotLog = 0;              /* we've seen dmesg logging */
@@ -89,6 +91,7 @@ bool input_mode_SHM = false;
 extern uint8_t *fuzz;
 
 /* from command line options */
+const char *aflConf = NULL;
 const char *aflFile = "/tmp/work";
 unsigned long aflPanicAddr = (unsigned long)-1;
 unsigned long aflDmesgAddr = (unsigned long)-1;
