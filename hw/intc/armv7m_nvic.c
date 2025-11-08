@@ -471,6 +471,7 @@ static int get_prio(NVICState *s, unsigned irq, bool secure)
  *  vec->active, vec->enabled, vec->pending or vec->prio for any vector
  *  prigroup
  */
+
 static void nvic_irq_update(NVICState *s)
 {
     int lvl;
@@ -2367,6 +2368,7 @@ static MemTxResult nvic_sysreg_write(void *opaque, hwaddr addr,
                 s->vectors[startvec + i].enabled = setval;
             }
         }
+
         nvic_irq_update(s);
         goto exit_ok;
     case 0x200 ... 0x23f: /* NVIC Set pend */

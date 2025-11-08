@@ -6,44 +6,69 @@ bool input_mode_SHM = false;
 long fuzz_size = 0;
 long fuzz_cursor = 0;
 
+#define DEBUG
 
 /* This is equivalent to afl-as.h: */
 
-static unsigned char *afl_area_ptr; // bitmap
+static unsigned char *bitmap; // bitmap
 
 /* Set in the child process in forkserver mode: */
 
 static unsigned char afl_fork_child;
 unsigned int afl_forksrv_pid;
+__thread uint32_t prev_loc = 0;
 
 /* Instrumentation ratio: */
 
 static unsigned int afl_inst_rms = MAP_SIZE;
+static bool input_already_given = false;
+
+
+void afl_reset_cov(void) {
+    return ;
+
+    memset(bitmap, 0, MAP_SIZE);
+    bitmap[0] = 1;
+    prev_loc = 0;
+    input_already_given = false;
+
+}
+
 
 /* get fuzzing inputs */
-bool get_fuzz(uint8_t *buf, uint32_t size) {
-    if(size && fuzz_cursor+size <= fuzz_size) {
-        #ifdef DEBUG
-        printf("[NATIVE FUZZ] Returning %d fuzz bytes\n", size); fflush(stdout);
-        #endif
+bool afl_get_fuzz(uint8_t *buf, uint32_t size) {
+
+    if(!input_already_given){
+        afl_load_fuzz();
+        input_already_given = true;
+    }
+
+    if(size && fuzz_cursor + size <= fuzz_size) {
+        qemu_log_mask(LOG_GUEST_ERROR, "[NATIVE FUZZ] Returning %d fuzz bytes\n", size); 
         memcpy(buf, &fuzz[fuzz_cursor], size);
         fuzz_cursor += size;
         return true;
     }
     else {
-        #ifdef DEBUG
-        printf("[NATIVE FUZZ] Running out of inputs \n"); fflush(stdout);
-        #endif  
+        qemu_log_mask(LOG_GUEST_ERROR, "[NATIVE FUZZ] Running out of inputs \n"); 
+        // exit(0);
+        _exit(0);
+        // raise(SIGSTOP);
     }
 
     return false;
 }
 
 /* Determine if AFL or AFL++ input mode */
-void determine_input_mode(void) {
+void afl_determine_input_mode(void) {
     char *id_str;
     int shm_id;
     int tmp;
+
+    #ifdef DEBUG
+        qemu_log_mask(LOG_GUEST_ERROR,
+                    "afl_determine_input_mode \n");
+    #endif
 
     id_str = getenv(SHM_FUZZ_ENV_VAR);
     if (id_str) {
@@ -67,7 +92,14 @@ void determine_input_mode(void) {
 
 
 /* Set up SHM region and initialize other stuff. */
-void afl_setup_bitmap(void) {
+void afl_init_bitmap(void) {
+    #ifdef DEBUG
+    qemu_log_mask(LOG_GUEST_ERROR,
+                    "afl_init_bitmap \n");
+    #endif
+
+    uint32_t tmp = FS_OPT_ENABLED | FS_OPT_SHDMEM_FUZZ;
+
     char *id_str = getenv(SHM_ENV_VAR),
         *inst_r = getenv("AFL_INST_RATIO");
     int shm_id;
@@ -82,35 +114,61 @@ void afl_setup_bitmap(void) {
 
     if (id_str) {
         shm_id = atoi(id_str);
-        afl_area_ptr = shmat(shm_id, NULL, 0);
+        bitmap = shmat(shm_id, NULL, 0);
 
-        if (afl_area_ptr == (void*)-1) exit(1);
+        if (bitmap == (void*)-1) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                    "bitmap == -1 \n");
+            exit(1);
+        }
+
+        if (write(FORKSRV_FD + 1, &tmp, 4) != 4) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                "enable SHM fuzzing failed\n");
+            exit(1);
+        }
 
         /* With AFL_INST_RATIO set to a low value, we want to touch the bitmap
         so that the parent doesn't give up on us. */
 
-        if (inst_r) afl_area_ptr[0] = 1;
+        if (inst_r) bitmap[0] = 1;
     }
 
   /* pthread_atfork() seems somewhat broken in util/rcu.c, and I'm
      not entirely sure what is the cause. This disables that
      behaviour, and seems to work alright? */
 
-    rcu_disable_atfork();
+    // rcu_disable_atfork();
+}
+
+
+bool afl_load_fuzz(void) {
+
+    if(input_mode_SHM) {
+        // shm inputs: <size_u32> contents ...
+        fuzz_size = (*(uint32_t *)fuzz) + sizeof(uint32_t);
+        fuzz_cursor = sizeof(uint32_t);
+
+        #ifdef DEBUG
+        qemu_log_mask(LOG_GUEST_ERROR,
+            "afl_load_fuzz: fuzz_size:0x%lx fuzz_cursor:0x%lx..\n", fuzz_size, fuzz_cursor);
+        #endif
+
+        return true;
+    }
+    return false;
 }
 
 /* Fork server logic, invoked once we hit _start. */
 void afl_forkserver(void) {
-    static unsigned char tmp[4];
-    uint8_t i = 0;
-    if (!afl_area_ptr) return;
+    #ifdef DEBUG
+        qemu_log_mask(LOG_GUEST_ERROR,
+                    "afl_forkserver \n");
+    #endif
 
-    /* Tell the parent that we're alive. If the parent doesn't want
-        to talk, assume that we're not running in forkserver mode. */
+    static uint32_t was_killed;
 
-    if (write(FORKSRV_FD + 1, tmp, 4) != 4) return;
-    qemu_log_mask(LOG_GUEST_ERROR,
-                      "%d: Debugging probe \n", i++);
+    if (!bitmap) return;
 
     afl_forksrv_pid = getpid();
 
@@ -118,77 +176,118 @@ void afl_forkserver(void) {
 
     while (1) {
         pid_t child_pid;
-        int status, t_fd[2];
+        int status;
+        #ifdef TRANSLATE_OPT
+        int t_fd[2];
+        #endif
 
         /* Whoops, parent dead? */
+        
+        if (read(FORKSRV_FD, &was_killed, 4) != 4) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                      "forkserver before fork, read status failed \n");
+            exit(2);
+        }
 
-        if (read(FORKSRV_FD, tmp, 4) != 4) exit(2);
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%d: Debugging probe \n", i++);
+        afl_reset_cov();
+
         /* Establish a channel with child to grab translation commands. We'll
         read from t_fd[0], child will write to TSL_FD. */
 
+        #ifdef TRANSLATE_OPT
         if (pipe(t_fd) || dup2(t_fd[1], TSL_FD) < 0) exit(3);
         close(t_fd[1]);
+        #endif
 
         child_pid = fork();
-        if (child_pid < 0) exit(4);
 
-        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%d: Debugging probe: fork \n", i++);
+        if (child_pid < 0) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+            "fork a child failed\n");
+            exit(4);
+        }
 
         if (!child_pid) {
+            /* Child process. Close descriptors and run free. */
+            afl_fork_child = 1;
+            close(FORKSRV_FD);
+            close(FORKSRV_FD + 1);
 
-        /* Child process. Close descriptors and run free. */
+            #ifdef TRANSLATE_OPT
+            close(t_fd[0]);
+            #endif
 
-        afl_fork_child = 1;
-        close(FORKSRV_FD);
-        close(FORKSRV_FD + 1);
-        close(t_fd[0]);
-        return;
-
+            // sleep(50);
+            return;
         }
 
         /* Parent. */
-        close(TSL_FD);
+        // close(TSL_FD);
 
-        if (write(FORKSRV_FD + 1, &child_pid, 4) != 4) exit(5);
+        if (write(FORKSRV_FD + 1, &child_pid, 4) != 4) {
+            qemu_log_mask(LOG_GUEST_ERROR,
+                      "forkserver: write child pid failed \n");
+            exit(5);
+        }
 
         /* Collect translation requests until child dies and closes the pipe. */
         // afl_wait_tsl(cpu, t_fd[0]);
 
         /* Get and relay exit status to parent. */
 
-        if (waitpid(child_pid, &status, 0) < 0) exit(6);
+        fprintf(stderr, "waiting for child status, child pid:%d \n", child_pid);
+        if (waitpid(child_pid, &status, 0) < 0) {
+             qemu_log_mask(LOG_GUEST_ERROR,
+                      "wait for child failed \n");
+            exit(6);
+        }
+       
+        #ifdef DEBUG
         qemu_log_mask(LOG_GUEST_ERROR,
-                      "%d: Debugging probe waitforpid: %d\n", i++, status);
+                "child status: %d child pid: %d\n", status, child_pid);
+                
+        #endif
 
-        if (write(FORKSRV_FD + 1, &status, 4) != 4) exit(7);
+        // fprintf(stderr, "write status to fuzzer\n");
+
+        if (write(FORKSRV_FD + 1, &status, 4) != 4){ 
+             qemu_log_mask(LOG_GUEST_ERROR,
+                      "write child status failed \n");
+            
+            fprintf(stderr, "write child status failed\n");
+
+            exit(7);
+        }
+
+        // fprintf(stderr, "write child status successful\n");
+
     }
 }
 
 /* The equivalent of the tuple logging routine from afl-as.h. */
 void afl_maybe_log(uint32_t cur_loc) {
 
+    #ifdef DEBUG
     qemu_log_mask(LOG_GUEST_ERROR,
                       "bb 0x%x is accessed \n", cur_loc);
+    #endif
 
     /* crash if the execution falls into hardfault handler*/
-    if (cur_loc == 0x80021c8) {
+    if (cur_loc == 0x08002208) {
         qemu_log_mask(LOG_GUEST_ERROR,
                       "Debugging probe kill at 0x80021c8 \n");
-        kill(getpid(), SIGSEGV);
+        _exit(SIGSEGV);
+        // kill(getpid(), SIGSEGV);
     }
 
-    static __thread uint32_t prev_loc = 0;
 
     /* Optimize for cur_loc > afl_end_code, which is the most likely case on
         Linux systems. */
 
-//   if (cur_loc > afl_end_code || cur_loc < afl_start_code || !afl_area_ptr)
+//   if (cur_loc > afl_end_code || cur_loc < afl_start_code || !bitmap)
 //     return;
 
-    if(!afl_area_ptr) return;
+    if(!bitmap) return;
 
   /* Looks like QEMU always maps to fixed locations, so ASAN is not a
      concern. Phew. But instruction addresses may be aligned. Let's mangle
@@ -202,8 +301,11 @@ void afl_maybe_log(uint32_t cur_loc) {
 
     if (cur_loc >= afl_inst_rms) return;    
     
-    if (prev_loc != 0)
-        afl_area_ptr[cur_loc ^ prev_loc]++;
+    if (prev_loc != 0){
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "edge key: 0x%x\n", cur_loc ^ prev_loc);
+        bitmap[cur_loc ^ prev_loc]++;
+    }
     
     prev_loc = cur_loc >> 1;
 }

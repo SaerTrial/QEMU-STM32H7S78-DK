@@ -1331,11 +1331,29 @@ static void iommu_memory_region_initfn(Object *obj)
     mr->is_iommu = true;
 }
 
+#define DEBUG_UNASSIGNED
 static uint64_t unassigned_mem_read(void *opaque, hwaddr addr,
                                     unsigned size)
 {
+    uint64_t rand_val = 0;
 #ifdef DEBUG_UNASSIGNED
-    printf("Unassigned mem read " HWADDR_FMT_plx "\n", addr);
+    switch (size) {
+        case 1: 
+            rand_val = rand() % ((1UL<<8) - 1);
+            break;
+        case 2:
+            rand_val = rand() % ((1UL<<16) - 1);
+            break;
+        case 4: 
+            rand_val = rand() % ((1UL<<32) - 1);
+            break;
+        default:
+            exit(1);
+    }
+
+    printf("[size: %d] Unassigned mem read [%lx] " HWADDR_FMT_plx "\n", size, rand_val, addr);
+
+    return rand_val;
 #endif
     return 0;
 }
@@ -1477,7 +1495,10 @@ MemTxResult memory_region_dispatch_read(MemoryRegion *mr,
                                            pval, op, attrs);
     }
     if (!memory_region_access_valid(mr, addr, size, false, attrs)) {
-        *pval = unassigned_mem_read(mr, addr, size);
+        if(addr > 0x40000000 && addr < 0x70000000) {
+            *pval = unassigned_mem_read(mr, addr, size);
+            return MEMTX_OK;
+        }
         return MEMTX_DECODE_ERROR;
     }
 

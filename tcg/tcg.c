@@ -2754,6 +2754,22 @@ void gen_afl_maybe_log(uint64_t pc){
 
 }
 
+void gen_trace_block(ArchPatch func, CPUState* cpu, uint64_t pc) {
+    static TCGHelperInfo info; 
+
+    TCGv_ptr tcg_cpu = tcg_constant_ptr(cpu);
+
+    TCGTemp* args[] = {
+        tcgv_ptr_temp(tcg_cpu)
+    };
+
+    info.flags = TCG_CALL_NO_RWG;
+    // void (*)(ptr)
+    info.typemask = dh_typemask(void, 0) | dh_typemask(ptr, 1);
+    tcg_gen_callN((void*)func, &info, NULL, (TCGTemp**)args);
+    tcg_temp_free_ptr(tcg_cpu);
+    
+}
 
 void 
 gen_tracecode(ArchPatch func, CPUState* cpu, uint64_t pc)

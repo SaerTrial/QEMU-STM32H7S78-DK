@@ -77,9 +77,11 @@ static uint64_t stm32h7rx7sx_usart_read(void *opaque, hwaddr addr,
         s->usart_isr |= USART_ISR_RXFNE;
         break;
     case USART_RDR:
-        // srand(time(NULL));
-        // retvalue = (rand()%256) & 0xFF;
-        get_fuzz((uint8_t*)&retvalue, sizeof(retvalue));
+        srand(time(NULL));
+        retvalue = (rand()%256) & 0xFF;
+        // afl_get_fuzz((uint8_t*)&retvalue, sizeof(uint8_t));
+        qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: uart char: 0x%x\n", __func__, (uint32_t)retvalue);
         if(IS_FIFO_MODE(s->usart_cr1)){
             s->usart_isr &= ~USART_ISR_RXFNE;
         }
@@ -168,12 +170,12 @@ static void stm32h7rx7sx_usart_write(void *opaque, hwaddr addr,
         if (IS_9BIT_MODE(s->usart_cr1)) {
             qemu_chr_fe_write_all(&s->chr, &ch, 2);
             qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: uart char: 0x%x\n", __func__, ch);
+                       "%s: uart char: 0x%x\n", __func__, ch);
         }
         else {
             qemu_chr_fe_write_all(&s->chr, &ch, 1);
-                        qemu_log_mask(LOG_GUEST_ERROR,
-                      "%s: uart char: %c\n", __func__, ch);
+            qemu_log_mask(LOG_GUEST_ERROR,
+                       "%s: uart char: %c\n", __func__, ch);
         }
 
         s->usart_isr |= USART_ISR_TC;
@@ -226,6 +228,9 @@ static void stm32h7rx7sx_usart_init(Object *obj)
     memory_region_init_io(&s->mmio, obj, &stm32h7rx7sx_usart_ops, s,
                           TYPE_STM32H7RX7SX_USART, 0x400);
     sysbus_init_mmio(SYS_BUS_DEVICE(obj), &s->mmio);
+
+    qemu_log_mask(LOG_GUEST_ERROR,
+                    "stm32h7rx7sx_usart_init \n");
 }
 
 static void stm32h7rx7sx_usart_realize(DeviceState *dev, Error **errp)
@@ -245,7 +250,17 @@ static void stm32h7rx7sx_usart_class_init(ObjectClass *klass, const void *data)
     device_class_set_props(dc, stm32h7rx7sx_usart_properties);
     dc->realize = stm32h7rx7sx_usart_realize;
 
-    // AFL_QEMU_CPU_SNIPPET2;
+    qemu_log_mask(LOG_GUEST_ERROR,
+                    "stm32h7rx7sx_usart_class_init \n");
+
+    /* AFL-related setup*/
+    // static bool afl_setup = false;
+    // if (!afl_setup) {
+    //     afl_init_bitmap(); 
+    //     afl_determine_input_mode();
+    //     afl_forkserver();
+    //     afl_setup = true;
+    // } 
 }
 
 static const TypeInfo stm32h7rx7sx_usart_info = {

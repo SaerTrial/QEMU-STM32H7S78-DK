@@ -7902,12 +7902,15 @@ static void thumb_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     dc->pc_curr = pc;
     insn = arm_lduw_code(env, &dc->base, pc, dc->sctlr_b);
     is_16bit = thumb_insn_is_16bit(dc, dc->base.pc_next, insn);
+       
     pc += 2;
     if (!is_16bit) {
         uint32_t insn2 = arm_lduw_code(env, &dc->base, pc, dc->sctlr_b);
         insn = insn << 16 | insn2;
         pc += 2;
     }
+
+
     dc->base.pc_next = pc;
     dc->insn = insn;
 
@@ -7981,13 +7984,12 @@ static void thumb_tr_translate_insn(DisasContextBase *dcbase, CPUState *cpu)
     // tcg_gen_lookup_and_goto_ptr();
 
     // gen_set_label(no_patch);
-
+   
     if (is_16bit) {
         disas_thumb_insn(dc, insn);
     } else {
         disas_thumb2_insn(dc, insn);
     }
-
     /* Advance the Thumb condexec condition.  */
     if (dc->condexec_mask) {
         dc->condexec_cond = ((dc->condexec_cond & 0xe) |
@@ -8144,14 +8146,30 @@ static void arm_tr_tb_stop(DisasContextBase *dcbase, CPUState *cpu)
     }
 }
 
+
+#include "qemu/main-loop.h"
+
+// void armv7m_nvic_set_pending(NVICState *s, int irq, bool secure);
 static void arm_patch_function(CPUState *cpu){
-    static uint32_t cnt = 0;
+    // static uint32_t cnt = 0;
     CPUARMState *env = cpu_env(cpu);
-    printf("[arm_patch_function_%u] pc: 0x%x, lr: 0x%x, icount:%d \n", cnt++, env->regs[15], env->regs[14], backward_edge_icount);
-    if (env->thumb)
-        env->regs[15] = env->regs[14] & ~1;
-    else
-        env->regs[15] = env->regs[14];
+    // armv7m_nvic_set_pending(env->nvic, 15, false);
+
+    printf("bb: 0x%x\n",  env->regs[15]);
+    // cnt++;
+    
+    // if (cnt % 10000 == 0) {
+    //     bql_lock();
+    //     armv7m_nvic_set_pending(env->nvic, 15, false);
+    //     bql_unlock();
+    //     cnt = 0;
+    // }
+
+    // printf("[arm_patch_function_%u] pc: 0x%x, lr: 0x%x, icount:%d \n", cnt++, env->regs[15], env->regs[14], backward_edge_icount);
+    // if (env->thumb)
+    //     env->regs[15] = env->regs[14] & ~1;
+    // else
+    //     env->regs[15] = env->regs[14];
 }
 
 static const TranslatorOps arm_translator_ops = {

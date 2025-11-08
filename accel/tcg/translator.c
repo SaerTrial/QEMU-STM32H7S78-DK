@@ -21,6 +21,7 @@
 #include "disas/disas.h"
 #include "tb-internal.h"
 
+#include "accel/tcg/afl-qemu-cpu.h"
 
 static void set_can_do_io(DisasContextBase *db, bool val)
 {
@@ -120,6 +121,12 @@ bool translator_use_goto_tb(DisasContextBase *db, vaddr dest)
     return translator_is_same_page(db, dest);
 }
 
+#define DEBUG
+
+#ifdef DEBUG
+#include "exec/tb-flush.h"
+#endif
+
 void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
                      vaddr pc, void *host_pc, const TranslatorOps *ops,
                      DisasContextBase *db)
@@ -147,10 +154,11 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
     ops->init_disas_context(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
-    // emit some TCGops that perform real-time logging like afl_may_log to update edge coverage
+    // emit some TCGops that perform update on edge coverage
     // TODO: some vars for a pointer of edge coverage, previous location, current location
     // gen_tracecode(ops->patch_test, cpu, db->pc_first);
-    gen_afl_maybe_log(db->pc_first);
+    // gen_afl_maybe_log(db->pc_first);
+    gen_trace_block(ops->patch_test, cpu, db->pc_first);
 
     /* Start translating.  */
     icount_start_insn = gen_tb_start(db, cflags);
@@ -172,7 +180,7 @@ void translator_loop(CPUState *cpu, TranslationBlock *tb, int *max_insns,
         if (plugin_enabled) {
             plugin_gen_insn_start(cpu, db);
         }
-        
+
         /*
          * Disassemble one instruction.  The translate_insn hook should
          * update db->pc_next and db->is_jmp to indicate what should be

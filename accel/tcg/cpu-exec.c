@@ -919,11 +919,6 @@ cpu_exec_loop(CPUState *cpu, SyncClocks *sc)
 {
     int ret;
 
-    /* AFL-related setup*/
-    determine_input_mode(); 
-    afl_setup_bitmap(); 
-    afl_forkserver(); 
-
     /* if an exception is pending, we execute it here */
     while (!cpu_handle_exception(cpu, &ret)) {
         TranslationBlock *last_tb = NULL;

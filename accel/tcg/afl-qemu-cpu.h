@@ -25,11 +25,12 @@
 
 #define TSL_FD (FORKSRV_FD - 1)
 
-
-
-bool get_fuzz(uint8_t *buf, uint32_t size);
-void determine_input_mode(void);
-void afl_setup_bitmap(void);
+// #define DEBUG
+void afl_reset_cov(void);
+bool afl_load_fuzz(void);
+bool afl_get_fuzz(uint8_t *buf, uint32_t size);
+void afl_determine_input_mode(void);
+void afl_init_bitmap(void);
 void afl_forkserver(void);
 void afl_maybe_log(uint32_t cur_loc);
 void afl_wait_tsl(CPUState *cpu, int fd);
